@@ -1,0 +1,88 @@
+------------------------ Requirements ----------------------
+1. php -v
+2. composer -V
+3. npm -v
+
+------------------------ Installation ----------------------
+1. composer create-project --prefer-dist laravel/laravel website-chat-app
+2. cd website-chat-app && setup .env database name
+3. composer require laravel/sanctum
+4. php artisan vendor:publish --provider="Laravel\Sanctum\SanctumServiceProvider"
+5. composer require laravel/jetstream
+6. php artisan jetstream:install inertia
+7. php artisan migrate
+8. npm install
+9. php artisan vendor:publish --tag=jetstream-views
+10. npm run hot
+11. php artisan serve
+12. php artisan make:model ChatRoom -m
+13. php artisan make:model ChatMessage -m
+
+
+------------------------ Model Columns ----------------------
+14. database/migrations -> chat_rooms: $table->string('name');
+15. database/migrations -> chat_messages: $table->integer('chat_room_id'); $table->integer('user_id'); $table->mediumText('message');
+16. php artisan migrate
+
+--------------------------- Seeders -------------------------
+17. php artisan make:seeder ChatRoomSeeder
+18. database/seeders -> ChatRoomSeeder: use Illuminate\Support\Facades\DB;
+19. database/seeders -> ChatRoomSeeder -> run(): DB::table('chat_rooms')->insert(['name' => 'General']); DB::table('chat_rooms')->insert(['name' => 'Tech Talk']);
+20. database/seeders -> DatabaseSeeder -> run(): $this->call([ChatRoomSeeder::class]);
+21. php artisan db:seed
+
+------------------------ Relationships ----------------------
+22. app/Models/ChatRoom: public function messages() { return $this->hasMany('App\Models\ChatMessage'); }
+23. app/Models/ChatMessage: public function room() { return $this->hasOne('App\Models\ChatRoom', 'id', 'chat_room_id'); } public function user() { return $this->hasOne('App\Models\User', 'id', 'user_id'); }
+
+------------------------- Controllers -----------------------
+24. php artisan make:controller ChatController
+25. app/Http/Controllers/ChatController: use App\Models\ChatRoom; use App\Models\ChatMessage; use Illuminate\Support\Facades\Auth;
+26. app/Http/Controllers/ChatController: public function rooms(Request $request){ return ChatRoom::all(); } public function messages( Request $request, $roomId ) { return ChatMessage::where('chat_room_id', $roomId)->with('user')->orderBy('created_at', 'DESC')->get(); } public function newMessage( Request $request, $roomId ) { $newMessage = new ChatMessage; $newMessage->user_id = Auth::id(); $newMessage->chat_room_id = $roomId; $newMessage->message = $request->message; $newMessage->save(); return $newMessage;}
+
+--------------------------- Routes --------------------------
+27. routes/web: use App\Http\Controllers\ChatController;
+28. routes/web: Route::middleware('auth:sanctum')->get('/chat/rooms', [ChatController::class, 'rooms']); Route::middleware('auth:sanctum')->get('/chat/room/{roomId}/messages', [ChatController::class, 'messages']); Route::middleware('auth:sanctum')->post('/chat/room/{roomId}/message', [ChatController::class, 'newMessage']);
+29. routes/web: Route::middleware(['auth:sanctum', 'verified'])->get('/chat', function () { return Inertia::render('Chat/container'); })->name('chat');
+
+------------------------- Components ------------------------
+30. 
+
+
+--------------------------- Pusher --------------------------
+31. go to pusher.com
+32. sign in with github
+33. get started with Channels instead of Beams
+34. create new app ['name: website-chat-app', front-end: 'Vue.js', back-end: 'Laravel']
+35. navigate to App Keys: copy app_id etc...
+36. paste in .env PUSHER_APP_ID= etc...
+37. change BROADCAST_DRIVER=log in .env, to BROADCAST_DRIVER=pusher
+38. go to pusher App Settings and set toggle TRUE of Enable authorized connections
+39. go to vscode config/app and un-comment App\Providers\BroadcastServiceProvider::class,
+40. composer require pusher/pusher-php-server "~4.0" or without that quotations
+41. npm install --save laravel-echo pusher-js
+42. remove the comments of echo script in bootstrap.js
+43. webpack.mix.js below const mix add: require('dotenv').config();
+44. add events in Providers/EventServiceProvider -> protected $listen: 'App\Events\NewChatMessage' => ['App\Listeners\SendChatMessageNotification']
+45. php artisan event:generate
+46. Events/NewChatMessage: use App\Models\ChatMessage;
+47. Events/NewChatMessage below use Dispatchable: public $chatMessage;
+48. Events/NewChatMessage: public function __construct(ChatMessage $chatMessage) { $this->chatMessage = $chatMessage; }
+49. Events/NewChatMessage: class NewChatMessage implements ShouldBroadcast
+50. Events/NewChatMessage -> broadcastOn(): return new PrivateChannel('chat.'. $this->chatMessage->chat_room_id);
+51. Events/NewChatMessage: /** * The event's broadcast name. * * @return string */ public function broadcastAs() { return 'message.new'; }
+51. app/Http/Controllers/ChatController: use App\Events\NewChatMessage;
+52. app/Http/Controllers/ChatController -> newMessage() -> before return: broadcast(new NewChatMessage($newMessage))->toOthers();
+53. routes/channels: use Illuminate\Support\Facades\Auth;
+54. routes/channels: Broadcast::channel('chat.{roomId}', function ($user, $roomId) { if(Auth::check()) { return ['id' => $user->id, 'name' => $user->name]; } });
+55. prevent pusher:error path not found: npm install pusher-js@6.0.3
+
+-------------------------- Front-end -------------------------
+56. resources/js/Pages/Chat/container.vue: comment this.getMessages() in methods setRoom()
+57. resources/js/Pages/Chat/container.vue: create methods connect() { if(this.currentRoom.id) {let vm = this; this.getMessages() window.Echo.private("chat." + this.currentRoom.id).listen('.message.new', e => {vm.getMessages();}); } }
+58. resources/js/Pages/Chat/container.vue: create watch: { currentRoom() { this.connect() } },
+59. resources/js/Pages/Chat/container.vue: create methods disconnect(room) { window.Echo.leave("chat." + room.id); },
+60. make controller, endpoint, axios to get authenticated user.
+
+---->> Finish
+
