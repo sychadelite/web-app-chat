@@ -96,6 +96,7 @@ export default {
         },
         setRoom(room) {
             this.currentRoom = room
+            this.connect();
             // this.getMessages()
         },
         getMessages() {
